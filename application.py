@@ -7,6 +7,8 @@ from flask import Flask, render_template, Response, jsonify
 import gc 
 import cv2
 import numpy as np
+import tensorflow as tf
+import tf_keras as keras # Use the compatibility wrapper
 from tensorflow.keras.models import load_model
 import pyttsx3 # <--- OFFLINE VOICE (No Internet Needed)
 from collections import deque, Counter
@@ -22,13 +24,10 @@ BUFFER_SIZE = 5
 
 # Load Model
 try:
-    print("⏳ Loading Model...")
-    model = load_model(MODEL_PATH)
-    print("✅ Model Loaded Successfully (CPU Mode)")
+    model = keras.models.load_model('models/road_sign_model_final.h5')
+    print("Model loaded successfully using tf_keras!")
 except Exception as e:
-    print(f"❌ Error: Model not found at {MODEL_PATH}")
-    print(f"Details: {e}")
-    exit()
+    print(f"Error loading model: {e}")
 
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
