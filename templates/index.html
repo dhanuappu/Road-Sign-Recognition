@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Road Sign AI | Vision System</title>
+    
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+    <h1>Road Sign AI</h1>
+    <div class="subtitle">Real-time Traffic Recognition System</div>
+
+    <div class="dashboard">
+        <div class="video-container">
+            <img src="{{ url_for('video_feed') }}" alt="Live Feed">
+        </div>
+
+        <div class="status-box">
+            <div class="status-label">Detected Sign</div>
+            <div id="sign-text">System Active...</div>
+        </div>
+
+        <div class="controls">
+            <button class="lang-btn active" onclick="setLanguage('en', this)">ENGLISH</button>
+            <button class="lang-btn" onclick="setLanguage('hi', this)">HINDI</button>
+            <button class="lang-btn" onclick="setLanguage('kn', this)">KANNADA</button>
+            <button class="lang-btn" onclick="setLanguage('ta', this)">TAMIL</button>
+            <button class="lang-btn" onclick="setLanguage('te', this)">TELUGU</button>
+        </div>
+    </div>
+
+    <div class="footer">
+        Project Deployment v1.0 | Powered by TensorFlow & Flask
+    </div>
+
+    <script>
+        let currentSign = "";
+
+        function setLanguage(langCode, btn) {
+            fetch(`/set_language/${langCode}`)
+                .then(response => response.json())
+                .then(data => {
+                    // Update Active Button UI
+                    document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                });
+        }
+
+        // Live Text Update with Pulse Effect
+        setInterval(() => {
+            fetch('/get_detection')
+                .then(response => response.json())
+                .then(data => {
+                    const textElement = document.getElementById('sign-text');
+                    
+                    if (data.sign !== currentSign) {
+                        currentSign = data.sign;
+                        textElement.innerText = data.sign;
+                        
+                        // Add Pulse Animation on Change
+                        textElement.style.transform = "scale(1.1)";
+                        textElement.style.color = "#fff"; // Flash White
+                        setTimeout(() => {
+                            textElement.style.transform = "scale(1)";
+                            textElement.style.color = "var(--primary-color)"; // Back to Neon
+                        }, 200);
+                    }
+                });
+        }, 500); // Check every 0.5 seconds
+    </script>
+</body>
+</html>
