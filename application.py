@@ -172,4 +172,6 @@ def cleanup(resp_or_exc):
     gc.collect()
 
 if __name__ == "__main__":
-    application.run(debug=False, threaded=True)
+    # Get port from environment variable, default to 10000 for Render
+    port = int(os.environ.get("PORT", 10000))
+    application.run(host='0.0.0.0', port=port)
