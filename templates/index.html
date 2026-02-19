@@ -1,80 +1,60 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Road Sign AI | Vision System</title>
+    <title>Road Sign AI</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <style>
-        body { background: #0f0f0f; color: white; font-family: sans-serif; text-align: center; }
-        .dashboard { max-width: 500px; margin: auto; padding: 20px; }
-        #webcam { width: 100%; border: 3px solid #00ffcc; border-radius: 15px; box-shadow: 0 0 20px #00ffcc; }
-        .status-box { background: #1a1a1a; margin-top: 20px; padding: 20px; border-radius: 10px; border-left: 5px solid #00ffcc; }
-        #sign-text { font-size: 24px; font-weight: bold; color: #00ffcc; }
-        .controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 20px; }
-        .lang-btn { padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; background: #333; color: white; transition: 0.3s; }
-        .lang-btn.active { background: #00ffcc; color: black; font-weight: bold; }
-    </style>
 </head>
-<body>
-    <h1>Road Sign AI</h1>
-    <div class="dashboard">
-        <video id="webcam" autoplay playsinline></video>
-        <canvas id="canvas" style="display:none;"></canvas>
-        
-        <div class="status-box">
-            <div id="sign-text">System Active...</div>
-        </div>
+<body style="background:#000; color:#0f0; text-align:center; font-family:sans-serif;">
+    <h1>ROAD SIGN AI</h1>
+    <video id="v" autoplay playsinline style="width:90%; border:2px solid #0f0; border-radius:10px;"></video>
+    <canvas id="c" style="display:none;"></canvas>
+    
+    <div style="margin:20px; padding:20px; background:#111; border-radius:10px;">
+        <h2 id="st">Awaiting Camera...</h2>
+    </div>
 
-        <div class="controls">
-            <button class="lang-btn active" onclick="setLanguage('en', this)">ENGLISH</button>
-            <button class="lang-btn" onclick="setLanguage('hi', this)">HINDI</button>
-            <button class="lang-btn" onclick="setLanguage('kn', this)">KANNADA</button>
-            <button class="lang-btn" onclick="setLanguage('ta', this)">TAMIL</button>
-            <button class="lang-btn" onclick="setLanguage('te', this)">TELUGU</button>
-        </div>
+    <div style="display:flex; flex-wrap:wrap; justify-content:center; gap:10px;">
+        <button onclick="setL('en')">English</button>
+        <button onclick="setL('hi')">Hindi</button>
+        <button onclick="setL('kn')">Kannada</button>
+        <button onclick="setL('ta')">Tamil</button>
+        <button onclick="setL('te')">Telugu</button>
     </div>
 
     <script>
-        const video = document.getElementById('webcam');
-        const canvas = document.getElementById('canvas');
-        const context = canvas.getContext('2d');
-        let currentSign = "";
+        const v = document.getElementById('v');
+        const c = document.getElementById('c');
+        const st = document.getElementById('st');
+        let cur = "";
 
-        // Start Camera
-        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-            .then(stream => { 
-                video.srcObject = stream; 
-                setInterval(sendFrame, 400); // Send frame every 0.4s
+        navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}})
+            .then(s => { 
+                v.srcObject = s; 
+                setInterval(upload, 500); 
             });
 
-        function sendFrame() {
-            canvas.width = 300; canvas.height = 300;
-            context.drawImage(video, 0, 0, 300, 300);
+        function upload() {
+            c.width = 300; c.height = 300;
+            c.getContext('2d').drawImage(v, 0, 0, 300, 300);
             fetch('/process_frame', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ image: canvas.toDataURL('image/jpeg', 0.6) })
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({image: c.toDataURL('image/jpeg', 0.5)})
             });
         }
 
-        // Poll for results and play audio
         setInterval(() => {
-            fetch('/get_detection').then(r => r.json()).then(data => {
-                const textElement = document.getElementById('sign-text');
-                if (data.sign !== currentSign) {
-                    currentSign = data.sign;
-                    textElement.innerText = data.sign;
-                    new Audio('/static/announcement.mp3?v=' + Date.now()).play().catch(e => {});
+            fetch('/get_detection').then(r => r.json()).then(d => {
+                if(d.sign !== cur) {
+                    cur = d.sign;
+                    st.innerText = d.sign;
+                    new Audio('/static/announcement.mp3?t=' + Date.now()).play();
                 }
             });
-        }, 600);
+        }, 800);
 
-        function setLanguage(lang, btn) {
-            fetch(`/set_language/${lang}`);
-            document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-        }
+        function setL(l) { fetch('/set_language/'+l); }
     </script>
 </body>
 </html>
