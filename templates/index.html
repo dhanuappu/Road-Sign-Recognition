@@ -69,6 +69,12 @@
                     }
                 });
         }, 500); // Check every 0.5 seconds
+
+function playDetectionSound() {
+    // This tells your browser to play the MP3 the server just made
+    let audio = new Audio('/static/announcement.mp3?cb=' + new Date().getTime());
+    audio.play();
+}
     </script>
 </body>
 </html>

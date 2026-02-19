@@ -31,28 +31,21 @@ except Exception as e:
 
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
-# --- OFFLINE VOICE ENGINE SETUP ---
-engine = gTTS.init()
-engine.setProperty('rate', 150) # Speed of speech
-voice_lock = threading.Lock() # Prevents voice from overlapping
-
-prediction_buffer = deque(maxlen=BUFFER_SIZE)
-current_language = 'en' 
-last_announced = None
-
-def speak_sign(text, lang_code='en'):
+def play_audio(text, lang='en'):
     try:
-        # Create the audio object
-        tts = gTTS(text=text, lang=lang_code)
+        # 1. Create the speech object
+        tts = gTTS(text=text, lang=lang)
         
-        # Save it to the static folder so the browser can find it
-        file_path = "static/sign_voice.mp3"
-        tts.save(file_path)
+        # 2. Save it as an MP3 in your static folder
+        audio_file = "static/announcement.mp3"
+        tts.save(audio_file)
         
-        return file_path
+        # Note: On Render, you can't "play" it on the server.
+        # Your HTML will play this file instead.
+        return True
     except Exception as e:
-        print(f"gTTS Error: {e}")
-        return None
+        print(f"Audio Error: {e}")
+        return False
 
     thread = threading.Thread(target=_speak)
     thread.start()
