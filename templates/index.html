@@ -7,97 +7,55 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-
     <h1>Road Sign AI</h1>
-    <div class="subtitle">Real-time Traffic Recognition System</div>
-
     <div class="dashboard">
         <div class="video-container">
             <video id="webcam" autoplay playsinline style="width: 100%; border-radius: 10px;"></video>
             <canvas id="canvas" style="display:none;"></canvas>
         </div>
-
         <div class="status-box">
-            <div class="status-label">Detected Sign</div>
-            <div id="sign-text">Awaiting Camera...</div>
+            <div id="sign-text">System Active...</div>
         </div>
-
         <div class="controls">
             <button class="lang-btn active" onclick="setLanguage('en', this)">ENGLISH</button>
             <button class="lang-btn" onclick="setLanguage('hi', this)">HINDI</button>
             <button class="lang-btn" onclick="setLanguage('kn', this)">KANNADA</button>
-            <button class="lang-btn" onclick="setLanguage('ta', this)">TAMIL</button>
-            <button class="lang-btn" onclick="setLanguage('te', this)">TELUGU</button>
         </div>
     </div>
 
-    <div class="footer">
-        Project Deployment v1.0 | Monish Kvm | Powered by TensorFlow
-    </div>
-
     <script>
-        let currentSign = "";
         const video = document.getElementById('webcam');
         const canvas = document.getElementById('canvas');
         const context = canvas.getContext('2d');
+        let currentSign = "";
 
-        // 1. Start the Webcam on the User's Device
         navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-            .then(stream => {
-                video.srcObject = stream;
-                // Once camera is on, start sending frames to Python every 200ms
-                setInterval(captureAndSendFrame, 200);
-            })
-            .catch(err => {
-                alert("Please enable camera permissions!");
-                console.error(err);
-            });
+            .then(stream => { video.srcObject = stream; setInterval(sendFrame, 300); });
 
-        // 2. Capture Frame and Send to Render Server
-        function captureAndSendFrame() {
-            canvas.width = 320; // Small size for faster upload
-            canvas.height = 240;
-            context.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
-            const imageData = canvas.toDataURL('image/jpeg', 0.5); // Compress to 50% quality
-            
+        function sendFrame() {
+            canvas.width = 320; canvas.height = 240;
+            context.drawImage(video, 0, 0, 320, 240);
             fetch('/process_frame', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ image: imageData })
+                body: JSON.stringify({ image: canvas.toDataURL('image/jpeg', 0.5) })
             });
         }
 
-        function setLanguage(langCode, btn) {
-            fetch(`/set_language/${langCode}`)
-                .then(response => response.json())
-                .then(data => {
-                    document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                });
-        }
-
-        // 3. Update UI and Play Sound
         setInterval(() => {
-            fetch('/get_detection')
-                .then(response => response.json())
-                .then(data => {
-                    const textElement = document.getElementById('sign-text');
-                    if (data.sign !== currentSign && data.sign !== "System Active") {
-                        currentSign = data.sign;
-                        textElement.innerText = data.sign;
-                        playDetectionSound();
-                        
-                        // Pulse Animation
-                        textElement.style.transform = "scale(1.1)";
-                        setTimeout(() => textElement.style.transform = "scale(1)", 200);
-                    }
-                });
-        }, 500);
+            fetch('/get_detection').then(r => r.json()).then(data => {
+                if (data.sign !== currentSign) {
+                    currentSign = data.sign;
+                    document.getElementById('sign-text').innerText = data.sign;
+                    new Audio('/static/announcement.mp3?v=' + Date.now()).play();
+                }
+            });
+        }, 600);
 
-        function playDetectionSound() {
-            let audio = new Audio('/static/announcement.mp3?cb=' + new Date().getTime());
-            audio.play().catch(e => console.log("Audio play blocked until user interacts"));
+        function setLanguage(lang, btn) {
+            fetch(`/set_language/${lang}`);
+            document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
         }
     </script>
 </body>
