@@ -5,21 +5,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Road Sign AI | Vision System</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        body { background: #0f0f0f; color: white; font-family: sans-serif; text-align: center; }
+        .dashboard { max-width: 500px; margin: auto; padding: 20px; }
+        #webcam { width: 100%; border: 3px solid #00ffcc; border-radius: 15px; box-shadow: 0 0 20px #00ffcc; }
+        .status-box { background: #1a1a1a; margin-top: 20px; padding: 20px; border-radius: 10px; border-left: 5px solid #00ffcc; }
+        #sign-text { font-size: 24px; font-weight: bold; color: #00ffcc; }
+        .controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 20px; }
+        .lang-btn { padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; background: #333; color: white; transition: 0.3s; }
+        .lang-btn.active { background: #00ffcc; color: black; font-weight: bold; }
+    </style>
 </head>
 <body>
     <h1>Road Sign AI</h1>
     <div class="dashboard">
-        <div class="video-container">
-            <video id="webcam" autoplay playsinline style="width: 100%; border-radius: 10px;"></video>
-            <canvas id="canvas" style="display:none;"></canvas>
-        </div>
+        <video id="webcam" autoplay playsinline></video>
+        <canvas id="canvas" style="display:none;"></canvas>
+        
         <div class="status-box">
             <div id="sign-text">System Active...</div>
         </div>
+
         <div class="controls">
             <button class="lang-btn active" onclick="setLanguage('en', this)">ENGLISH</button>
             <button class="lang-btn" onclick="setLanguage('hi', this)">HINDI</button>
             <button class="lang-btn" onclick="setLanguage('kn', this)">KANNADA</button>
+            <button class="lang-btn" onclick="setLanguage('ta', this)">TAMIL</button>
+            <button class="lang-btn" onclick="setLanguage('te', this)">TELUGU</button>
         </div>
     </div>
 
@@ -29,25 +41,31 @@
         const context = canvas.getContext('2d');
         let currentSign = "";
 
+        // Start Camera
         navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-            .then(stream => { video.srcObject = stream; setInterval(sendFrame, 300); });
+            .then(stream => { 
+                video.srcObject = stream; 
+                setInterval(sendFrame, 400); // Send frame every 0.4s
+            });
 
         function sendFrame() {
-            canvas.width = 320; canvas.height = 240;
-            context.drawImage(video, 0, 0, 320, 240);
+            canvas.width = 300; canvas.height = 300;
+            context.drawImage(video, 0, 0, 300, 300);
             fetch('/process_frame', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ image: canvas.toDataURL('image/jpeg', 0.5) })
+                body: JSON.stringify({ image: canvas.toDataURL('image/jpeg', 0.6) })
             });
         }
 
+        // Poll for results and play audio
         setInterval(() => {
             fetch('/get_detection').then(r => r.json()).then(data => {
+                const textElement = document.getElementById('sign-text');
                 if (data.sign !== currentSign) {
                     currentSign = data.sign;
-                    document.getElementById('sign-text').innerText = data.sign;
-                    new Audio('/static/announcement.mp3?v=' + Date.now()).play();
+                    textElement.innerText = data.sign;
+                    new Audio('/static/announcement.mp3?v=' + Date.now()).play().catch(e => {});
                 }
             });
         }, 600);

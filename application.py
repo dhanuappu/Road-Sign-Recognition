@@ -23,9 +23,9 @@ current_language = 'en'
 prediction_buffer = deque(maxlen=5)
 
 # --- CONFIGURATION ---
-CONFIDENCE_THRESHOLD = 0.85 
+CONFIDENCE_THRESHOLD = 0.50 # Lowered for demo stability
 
-# Load Model (Using Keras 3 standard for TF 2.16+)
+# Load Model
 try:
     model = load_model('models/road_sign_model_final.h5')
     print("✅ Model loaded successfully!")
@@ -41,16 +41,19 @@ def adjust_gamma(image, gamma=1.5):
     return cv2.LUT(image, table)
 
 def preprocess_image(roi):
-    roi_bright = adjust_gamma(roi, gamma=1.5)
-    kernel = np.array([[0, -1, 0], [-1, 5,-1], [0, -1, 0]])
-    roi_sharp = cv2.filter2D(roi_bright, -1, kernel)
-    roi_rgb = cv2.cvtColor(roi_sharp, cv2.COLOR_BGR2RGB)
-    img_resized = cv2.resize(roi_rgb, (30,30))
-    img_final = np.expand_dims(img_resized, axis=0) / 255.0
+    # 1. Convert BGR to RGB (Fixes the "Wrong Color" issue)
+    roi_rgb = cv2.cvtColor(roi, cv2.COLOR_BGR2RGB)
+    # 2. Brightness correction
+    roi_bright = adjust_gamma(roi_rgb, gamma=1.5)
+    # 3. Resize to 30x30
+    img_resized = cv2.resize(roi_bright, (30,30))
+    # 4. Normalize (0 to 1) and expand dims
+    img_final = np.expand_dims(img_resized, axis=0).astype('float32') / 255.0
     return img_final
 
 def generate_audio_file(text, lang):
     try:
+        if not os.path.exists('static'): os.makedirs('static')
         tts = gTTS(text=text, lang=lang)
         tts.save("static/announcement.mp3")
     except Exception as e:
@@ -67,34 +70,35 @@ def process_frame():
 
     try:
         data = request.get_json()
+        # Extract raw base64 data
         image_b64 = data['image'].split(',')[1]
         nparr = np.frombuffer(base64.b64decode(image_b64), np.uint8)
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-        # Detect Faces to ignore
+        # Skip if face detected
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         if len(face_cascade.detectMultiScale(gray, 1.1, 4)) > 0:
-            prediction_buffer.clear()
-            return jsonify(success=True)
+            return jsonify(success=True, msg="Ignoring Face")
 
-        # Prediction
+        # Prediction logic
         processed = preprocess_image(frame)
         prediction = model.predict(processed, verbose=0)
         conf = np.max(prediction)
         class_id = np.argmax(prediction)
 
+        # DEBUG: Check Render Logs for this line!
+        print(f"DEBUG: Class {class_id} | Conf {conf*100:.1f}%")
+
         if conf > CONFIDENCE_THRESHOLD:
-            prediction_buffer.append(class_id)
-            if len(prediction_buffer) >= 3:
-                most_common_id, votes = Counter(prediction_buffer).most_common(1)[0]
-                if votes >= 3:
-                    sign_text = get_sign_text(most_common_id, current_language)
-                    if sign_text != last_announced:
-                        last_announced = sign_text
-                        threading.Thread(target=generate_audio_file, args=(sign_text, current_language)).start()
+            sign_text = get_sign_text(class_id, current_language)
+            if sign_text != last_announced:
+                last_announced = sign_text
+                threading.Thread(target=generate_audio_file, args=(sign_text, current_language)).start()
+        
         return jsonify(success=True)
     except Exception as e:
-        return jsonify(success=False, error=str(e))
+        print(f"ERROR: {e}")
+        return jsonify(success=False)
 
 @application.route('/get_detection')
 def get_detection():
@@ -105,7 +109,7 @@ def get_detection():
 def set_language(lang_code):
     global current_language, last_announced
     current_language = lang_code
-    last_announced = "Language Changed"
+    last_announced = "Language Updated"
     return jsonify(status="success")
 
 if __name__ == "__main__":
