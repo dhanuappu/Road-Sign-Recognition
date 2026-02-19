@@ -6,7 +6,6 @@ import numpy as np
 import threading
 import tensorflow as tf
 from tensorflow.keras.models import load_model
-import tf_keras as keras
 from flask import Flask, render_template, request, jsonify
 from gtts import gTTS
 from collections import deque, Counter
