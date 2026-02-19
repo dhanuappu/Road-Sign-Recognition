@@ -1,54 +1,40 @@
 import os
+import gc 
+import cv2
+import base64
+import numpy as np
+import threading
+import tf_keras as keras
+from flask import Flask, render_template, request, jsonify
+from gtts import gTTS
+from collections import deque, Counter
+from languages import get_sign_text
+
 # --- STABILITY: CPU MODE ---
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-from flask import Flask, render_template, Response, jsonify
-import gc 
-import cv2
-import numpy as np
-import tensorflow as tf
-import tf_keras as keras # Use the compatibility wrapper
-from tensorflow.keras.models import load_model
-from gtts import gTTS
-from collections import deque, Counter
-import threading
-from languages import get_sign_text
-
 application = Flask(__name__)
 
+# --- GLOBAL VARIABLES ---
+last_announced = "System Active"
+current_language = 'en'
+prediction_buffer = deque(maxlen=5)
+
 # --- CONFIGURATION ---
-MODEL_PATH = 'models/road_sign_model_final.h5' 
-CONFIDENCE_THRESHOLD = 0.85 # High confidence to reduce wrong guesses
-BUFFER_SIZE = 5
+CONFIDENCE_THRESHOLD = 0.85 
 
 # Load Model
 try:
+    # Use the absolute path for cloud stability
     model = keras.models.load_model('models/road_sign_model_final.h5')
-    print("Model loaded successfully using tf_keras!")
+    print("✅ Model loaded successfully!")
 except Exception as e:
-    print(f"Error loading model: {e}")
+    print(f"❌ Error loading model: {e}")
+    model = None
 
+# Load Face Cascade
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-
-def play_audio(text, lang='en'):
-    try:
-        # 1. Create the speech object
-        tts = gTTS(text=text, lang=lang)
-        
-        # 2. Save it as an MP3 in your static folder
-        audio_file = "static/announcement.mp3"
-        tts.save(audio_file)
-        
-        # Note: On Render, you can't "play" it on the server.
-        # Your HTML will play this file instead.
-        return True
-    except Exception as e:
-        print(f"Audio Error: {e}")
-        return False
-
-    thread = threading.Thread(target=_speak)
-    thread.start()
 
 def adjust_gamma(image, gamma=1.2):
     invGamma = 1.0 / gamma
@@ -56,97 +42,84 @@ def adjust_gamma(image, gamma=1.2):
     return cv2.LUT(image, table)
 
 def preprocess_image_advanced(roi):
-    # 1. Gamma Correction
+    # 1. Gamma Correction for better visibility
     roi_bright = adjust_gamma(roi, gamma=1.5)
-    
     # 2. Sharpening
-    kernel = np.array([[0, -1, 0], 
-                       [-1, 5,-1], 
-                       [0, -1, 0]])
+    kernel = np.array([[0, -1, 0], [-1, 5,-1], [0, -1, 0]])
     roi_sharp = cv2.filter2D(roi_bright, -1, kernel)
-
-    # 3. Standard Prep (30x30) - Matches your preferred model
+    # 3. Standard Prep (30x30)
     roi_rgb = cv2.cvtColor(roi_sharp, cv2.COLOR_BGR2RGB)
     img_resized = cv2.resize(roi_rgb, (30,30))
     img_final = np.expand_dims(img_resized, axis=0) / 255.0
-    
     return img_final
 
-def generate_frames():
-    global last_announced, prediction_buffer
-    cap = cv2.VideoCapture(0)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+def generate_audio_file(text, lang):
+    """Generates an MP3 file using gTTS for the browser to play."""
+    try:
+        tts = gTTS(text=text, lang=lang)
+        tts.save("static/announcement.mp3")
+    except Exception as e:
+        print(f"Audio generation error: {e}")
 
-    while True:
-        success, frame = cap.read()
-        if not success: break
-        
-        height, width, _ = frame.shape
-        box_size = 220
-        x1 = int(width/2 - box_size/2)
-        y1 = int(height/2 - box_size/2)
-        x2 = x1 + box_size
-        y2 = y1 + box_size
-        
-        roi = frame[y1:y2, x1:x2]
-        
-        if roi.size != 0:
-            gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-            faces = face_cascade.detectMultiScale(gray_roi, 1.1, 4)
-            
-            if len(faces) > 0:
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
-                cv2.putText(frame, "IGNORING FACE", (x1, y1 - 10), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
-                prediction_buffer.clear()
-            else:
-                try:
-                    img_final = preprocess_image_advanced(roi)
-                    prediction = model.predict(img_final, verbose=0)
-                    confidence = np.max(prediction)
-                    class_id = np.argmax(prediction)
-
-                    if confidence > CONFIDENCE_THRESHOLD:
-                        prediction_buffer.append(class_id)
-                    else:
-                        if len(prediction_buffer) > 0: prediction_buffer.popleft()
-
-                    # STABILIZER: Require 3 consistent frames
-                    if len(prediction_buffer) >= 3:
-                        most_common_id, num_votes = Counter(prediction_buffer).most_common(1)[0]
-                        
-                        if num_votes >= 3:
-                            translated_text = get_sign_text(most_common_id, current_language)
-                            english_text = get_sign_text(most_common_id, 'en')
-                            
-                            # Visuals
-                            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                            label = f"{english_text} ({int(confidence*100)}%)"
-                            cv2.putText(frame, label, (x1, y1 - 10), 
-                                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-                            
-                            # Voice Trigger
-                            if translated_text != last_announced:
-                                speak_sign(translated_text)
-                                last_announced = translated_text
-                        else:
-                             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 2)
-                    else:
-                        cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
-                except Exception as e:
-                    print(f"Prediction Error: {e}")
-
-        ret, buffer = cv2.imencode('.jpg', frame)
-        yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+# --- ROUTES ---
 
 @application.route('/')
 def index():
     return render_template('index.html')
 
-@application.route('/video_feed')
-def video_feed():
-    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+@application.route('/process_frame', methods=['POST'])
+def process_frame():
+    global last_announced, current_language, prediction_buffer
+    
+    if model is None:
+        return jsonify(success=False, error="Model not loaded")
+
+    try:
+        # 1. Get Base64 image from JavaScript
+        data = request.get_json()
+        image_b64 = data['image'].split(',')[1]
+        
+        # 2. Decode to OpenCV format
+        nparr = np.frombuffer(base64.b64decode(image_b64), np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+        # 3. Detect Faces (to ignore them)
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        faces = face_cascade.detectMultiScale(gray, 1.1, 4)
+        
+        if len(faces) > 0:
+            prediction_buffer.clear()
+            return jsonify(success=True, sign="IGNORING FACE")
+
+        # 4. Predict Road Sign
+        img_final = preprocess_image_advanced(frame)
+        prediction = model.predict(img_final, verbose=0)
+        confidence = np.max(prediction)
+        class_id = np.argmax(prediction)
+
+        if confidence > CONFIDENCE_THRESHOLD:
+            prediction_buffer.append(class_id)
+            
+            # STABILIZER: Require consistent frames
+            if len(prediction_buffer) >= 3:
+                most_common_id, num_votes = Counter(prediction_buffer).most_common(1)[0]
+                if num_votes >= 3:
+                    translated_text = get_sign_text(most_common_id, current_language)
+                    
+                    if translated_text != last_announced:
+                        last_announced = translated_text
+                        # Generate audio in a background thread
+                        threading.Thread(target=generate_audio_file, args=(translated_text, current_language)).start()
+
+        return jsonify(success=True)
+    except Exception as e:
+        return jsonify(success=False, error=str(e))
+
+@application.route('/get_detection')
+def get_detection():
+    global last_announced
+    # This solves your 'last_announced' NameError
+    return jsonify(sign=last_announced if last_announced else "System Active")
 
 @application.route('/set_language/<lang_code>')
 def set_language(lang_code):
@@ -155,15 +128,10 @@ def set_language(lang_code):
     last_announced = None 
     return jsonify({"status": "success", "language": lang_code})
 
-@application.route('/get_detection')
-def get_detection():
-    return jsonify(sign=last_announced if last_announced else "System Active")
-
 @application.teardown_appcontext
 def cleanup(resp_or_exc):
     gc.collect()
 
 if __name__ == "__main__":
-    # Get port from environment variable, default to 10000 for Render
     port = int(os.environ.get("PORT", 10000))
     application.run(host='0.0.0.0', port=port)
