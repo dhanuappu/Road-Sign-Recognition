@@ -4,6 +4,8 @@ import cv2
 import base64
 import numpy as np
 import threading
+import tensorflow as tf
+from tensorflow.keras.models import load_model
 import tf_keras as keras
 from flask import Flask, render_template, request, jsonify
 from gtts import gTTS
@@ -26,12 +28,10 @@ CONFIDENCE_THRESHOLD = 0.85
 
 # Load Model
 try:
-    # Use the absolute path for cloud stability
-    model = keras.models.load_model('models/road_sign_model_final.h5')
-    print("✅ Model loaded successfully!")
+    model = load_model('models/road_sign_model_final.h5')
+    print("✅ Model loaded successfully using Keras 3!")
 except Exception as e:
     print(f"❌ Error loading model: {e}")
-    model = None
 
 # Load Face Cascade
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')

@@ -1,7 +1,6 @@
 flask
-tensorflow-cpu==2.15.0
-tf_keras==2.15.0
+tensorflow==2.16.1
 opencv-python-headless
-numpy==1.24.3
+numpy==1.26.4
 gTTS
 gunicorn
