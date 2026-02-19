@@ -10,7 +10,7 @@ import numpy as np
 import tensorflow as tf
 import tf_keras as keras # Use the compatibility wrapper
 from tensorflow.keras.models import load_model
-import pyttsx3 # <--- OFFLINE VOICE (No Internet Needed)
+from gtts import gTTS
 from collections import deque, Counter
 import threading
 from languages import get_sign_text
@@ -32,7 +32,7 @@ except Exception as e:
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
 # --- OFFLINE VOICE ENGINE SETUP ---
-engine = pyttsx3.init()
+engine = gTTS.init()
 engine.setProperty('rate', 150) # Speed of speech
 voice_lock = threading.Lock() # Prevents voice from overlapping
 
@@ -40,20 +40,19 @@ prediction_buffer = deque(maxlen=BUFFER_SIZE)
 current_language = 'en' 
 last_announced = None
 
-def speak_sign(text):
-    """
-    OFFLINE THREADED AUDIO: Works without Internet.
-    """
-    def _speak():
-        with voice_lock: # Ensure only one voice speaks at a time
-            try:
-                # Re-initialize engine inside thread for safety
-                local_engine = pyttsx3.init()
-                local_engine.setProperty('rate', 150)
-                local_engine.say(text)
-                local_engine.runAndWait()
-            except Exception as e:
-                print(f"Voice Error: {e}")
+def speak_sign(text, lang_code='en'):
+    try:
+        # Create the audio object
+        tts = gTTS(text=text, lang=lang_code)
+        
+        # Save it to the static folder so the browser can find it
+        file_path = "static/sign_voice.mp3"
+        tts.save(file_path)
+        
+        return file_path
+    except Exception as e:
+        print(f"gTTS Error: {e}")
+        return None
 
     thread = threading.Thread(target=_speak)
     thread.start()
